@@ -1,0 +1,59 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  zoom-index
+
+  SAM Template for zoom-index
+
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 60
+
+Resources:
+  ZoomDataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: aws-zoom-data
+
+  ZoomIndexFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: zoom_index/
+      Handler: app.lambda_handler
+      Runtime: python3.7
+      FunctionName: zoom_index
+      Description: insert discovered resource into graph database
+      Role: arn:aws:iam::264810372674:role/service-role/lambda_indexing_role
+      VpcConfig:
+        SecurityGroupIds:
+          - sg-094f186bf95cf6463
+        SubnetIds:
+          - subnet-44821822
+          - subnet-51d2b819
+          - subnet-c04aee9a
+      Timeout: 120
+      Tags:
+        Team: Index
+        Project: Zoom
+      Environment: # More info about Env Vars: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#environment-object
+        Variables:
+          GRAPH_DB: wss://indexingdb.clgjdtncgrhe.eu-west-1.neptune.amazonaws.com:8182/gremlin
+      Events:
+        UpdateIndex:
+          Type: S3 # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#s3
+          Properties:
+            Bucket: !Ref ZoomDataBucket
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: data/
+                  - Name: suffix
+                    Value: json
+
+Outputs:
+  ZoomIndexFunction:
+    Description: "Zoom Index Lambda Function ARN"
+    Value: !GetAtt ZoomIndexFunction.Arn
