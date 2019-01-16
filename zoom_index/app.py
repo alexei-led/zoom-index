@@ -2,7 +2,6 @@ import boto3
 import json
 import logging
 import os
-import requests
 
 from gremlin_python.structure.graph import Graph
 from gremlin_python.process.traversal import T, P, Operator
