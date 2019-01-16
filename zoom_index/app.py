@@ -49,36 +49,51 @@ def new_resource(resource_id, resource_type, name=None, region=None, zone=None, 
             logging.info('adding new vertex with %s id', resource_id)
             resource = g.addV('resource').property(T.id, resource_id).next()
         # add type
+        logging.info("adding type: " + resource_type)
         g.V(resource).property('type', resource_type).next()
         # add name
         if name:
+            logging.info("adding name: " + name)
             g.V(resource).property('name', name).next()
         # add region
         if region:
+            logging.info("adding region: " + region)
             g.V(resource).property('region', region).next()
         # add availability zone
-        if region:
+        if zone:
+            logging.info("adding zone: " + zone)
             g.V(resource).property('zone', zone).next()
         # add tags
         if tags:
-            logging.info("received tags: " + str(tags))
+            logging.info("adding tags: " + str(tags))
             for tag_name, tag_value in tags.items():
                 g.V(resource).property(tag_name, tag_value).next()
         # add relationships
         if relationships:
-            logging.info("received relationships: " + str(relationships))
-            for to_resource_id, to_resource_type, relationship_name in relationships.items():
+            logging.info("adding relationships: " + str(relationships))
+            for relationship in relationships:
+                to_resource_id = relationship.get('resourceId')
+                to_resource_type = relationship.get('resourceType')
+                relationship_name = relationship.get('relationshipName')
                 # try to find "to" resource, insert if not found
                 to_resource = get_resource(to_resource_id, g)
                 if not to_resource:
-                    new_resource(to_resource_id, to_resource_type)
+                    to_resource = new_resource(to_resource_id, to_resource_type)
                 logging.info('adding new edge from %s to %s', resource_id, to_resource_id)
-                g.V(resource).addE(relationship_name).to(to_resource_id).next()
+                g.V(resource).addE(relationship_name).to(to_resource).next()
+        # return created/updated vertex
+        logging.info("successfully inserted new resource")
+        return resource
     except(ValueError, AttributeError, TypeError) as e:
         logging.error(e, exc_info=True)
         raise Exception('could not insert resource, error: ' + str(e))
-    logging.info("successfully inserted new resource")
-    return {"id": resource_id}
+
+
+def vertex_to_json(vertex, g):
+    # TODO - Almost certainly a better way of doing this
+    values = g.V(vertex).valueMap().toList()[0]
+    values["id"] = vertex.id
+    return values
 
 
 def lambda_handler(event, context):
@@ -177,12 +192,18 @@ def lambda_handler(event, context):
         # get required parameters
         resource_id = json_content['ConfigurationItem'].get('resourceId')
         resource_type = json_content['ConfigurationItem'].get('resourceType')
+        # use id as name by default
+        resource_name = json_content['ConfigurationItem'].get('resourceId')
         resource_region = json_content['ConfigurationItem'].get('awsRegion')
         resource_zone = json_content['ConfigurationItem'].get('availabilityZone')
         resource_tags = json_content['ConfigurationItem'].get('tags')
         resource_relationships = json_content['ConfigurationItem'].get('relationships')
+        # try to get name from tag Name
+        if resource_tags:
+            resource_name = resource_tags.get('Name')
 
-        return new_resource(resource_id, resource_type, resource_region, resource_zone, resource_tags, resource_relationships)
+        resource = new_resource(resource_id, resource_type, name=resource_name, region=resource_region, zone=resource_zone, tags=resource_tags, relationships=resource_relationships)
+        return vertex_to_json(vertex=resource, g=setup_graph())
 
     except Exception as e:
         # Send some context about this error to Lambda Logs
